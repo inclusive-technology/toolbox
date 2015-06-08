@@ -1,0 +1,121 @@
+var inquirer = require('inquirer');
+var commander = require('commander');
+var pkg = require('./package.json');
+var git = require('git');
+
+var repository = null;
+var tagList = [];
+var remoteList = [];
+
+// version
+commander.version(pkg.version);
+
+// deploy command
+commander
+  .command('deploy')
+  .description('For deployment!')
+  .action(function(options){
+
+    openRepo().then(function(repo){
+      return Promise.all([getTags(), getRemotes()])
+    }).then(function(){
+      console.log('all done');
+
+      var tagQuestion = {
+        type: 'list',
+        name: 'tag',
+        message: 'Choose which tag to be deployed',
+        choices: tagList
+      };
+
+      var remoteQuestion = {
+        type: 'list',
+        name: 'remote',
+        message: 'Where to deploy to',
+        choices: remoteList,
+      };
+
+      inquirer.prompt([tagQuestion, remoteQuestion], function(answers){
+        console.log(answers);
+      });
+    })
+
+  });
+commander.parse(process.argv);
+
+
+
+
+function openRepo(){
+  return new Promise(function(resolve, reject){
+    new git.Repo(process.cwd(), {is_bare: false}, function(error, repo){
+      if(!error){
+        repository = repo;
+        resolve(repo);
+      }
+      else{
+        reject(error)
+      }
+    })
+  });
+}
+
+function getTags(){
+  return new Promise(function(resolve, reject){
+    repository.tags(function(error, tags){
+      if(error){
+        reject(error);
+      }
+      else{
+        tagList = [];
+        // Sort the tags in date order, most recent at the top
+        tags.sort(function(a, b){
+          var dateA = new Date(a.commit.committed_date);
+          var dateB = new Date(b.commit.committed_date);
+          return dateA < dateB ? 1 : -1;
+        });
+
+
+        for(var i in tags){
+          tagList.push(tags[i].name)
+        }
+
+        resolve(tagList);
+      }
+    });
+  });
+}
+
+function getRemotes(){
+  return new Promise(function(resolve, reject){
+    repository.remotes(function(error, remotes){
+      if(error){
+        reject(error);
+      }
+      else{
+        remoteList = [];
+
+        console.log(remotes)
+
+        for(var i in remotes){
+          console.log(remotes[i].name);
+
+          var remote = remotes[i].name.split('/')[0];
+          var branch = remotes[i].name.split('/')[1];
+          if(remote.indexOf('deploy') != -1){
+            remoteList.push({
+              name: remotes[i].name,
+              key: remotes[i].name,
+              value: {
+                remote: remote,
+                branch: branch
+              }
+            });
+          }
+        }
+
+        resolve(remoteList);
+      }
+    });
+  });
+}

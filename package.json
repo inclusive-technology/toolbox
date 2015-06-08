@@ -1,0 +1,36 @@
+{
+  "name": "toolbox",
+  "version": "0.1.0",
+  "description": "Toolbox for html activites deployment, etc.",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "index.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/inclusive-technology/toolbox.git"
+  },
+  "keywords": [
+    "toolbox"
+  ],
+  "author": "Liy <liy8272@gmail.com>",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/inclusive-technology/toolbox/issues"
+  },
+  "homepage": "https://github.com/inclusive-technology/toolbox#readme",
+  "dependencies": {
+    "commander": "^2.8.1",
+    "es6-promise": "^2.1.1",
+    "gift": "^0.6.0",
+    "git": "^0.1.5",
+    "inquirer": "^0.8.5",
+    "sequest": "^0.8.0",
+    "ssh2": "^0.4.8"
+  },
+  "preferGlobal": true,
+  "bin": {
+    "toolbox": "index.js"
+  }
+}
