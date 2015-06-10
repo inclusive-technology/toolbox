@@ -92,7 +92,9 @@ ssh.test = function(repoPath){
 
 ssh.create = function(appName, repoPath){
   return new Promise(function(resolve, reject){
-    var command = 'git clone --bare git@bitbucket.org:inclusive-activities/boilerplate.git ' + repoPath;
+    // TODO: this should be the repository
+    // var command = 'git clone --bare git@bitbucket.org:inclusive-activities/boilerplate.git ' + repoPath;
+    var command = 'git init --bare ' + repoPath;
     conn.exec(command, function(error, stream) {
       if(error){
         throw error;

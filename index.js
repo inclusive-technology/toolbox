@@ -6,3 +6,6 @@ require('./src/new');
 
 // version
 commander.version(pkg.version);
+
+// Setup all the commands
+commander.parse(process.argv);

@@ -48,7 +48,7 @@ commander
       return ssh.new(appName, map['production'].directory)
     })
     .then(function(){
-      return cloneRepo(appName);
+      return setupLocalRepo(appName);
     })
     .then(function(success){
       if(success){
@@ -57,7 +57,6 @@ commander
     });
 
   });
-commander.parse(process.argv);
 
 function staging(){
   console.log('Staging SSH:')
@@ -93,11 +92,21 @@ function setQuestionDetail(env){
   });
 }
 
-function cloneRepo(appName){
+function setupLocalRepo(appName){
   console.log('Setup local repository, please wait...');
   return new Promise(function(resolve, reject){
     // var operation = exec('git', ['clone', '--progress', 'git@bitbucket.org:inclusive-activities/boilerplate.git', appName]);
-    var operation = exec('git clone git@bitbucket.org:inclusive-activities/boilerplate.git ' + appName)
+    // var operation = exec('git clone git@bitbucket.org:inclusive-activities/boilerplate.git ' + appName)
+
+    // var directoryPath = path.join(process.cwd(), appName);
+    // var operation = exec('mkdir ' + appName + ' && git archive --remote="git@bitbucket.org:inclusive-activities/boilerplate.git" master | tar -x -C ' + directoryPath)
+
+    // var directoryPath = path.join(process.cwd(), appName);
+    // var operation = exec('git clone --depth 1 git@bitbucket.org:inclusive-activities/boilerplate.git ' + appName + ' && cd ' + directoryPath + ' && git remote rm origin');
+
+    var directoryPath = path.join(process.cwd(), appName);
+    var operation = exec('git init ' + directoryPath + ' && git archive --remote="git@bitbucket.org:inclusive-activities/boilerplate.git" master | tar -x -C ' + directoryPath);
+
     operation.stdout.on('data', function(data){
       console.log(data.toString());
     });
@@ -106,7 +115,7 @@ function cloneRepo(appName){
     });
     operation.on('exit', function(code){
       if(code === 0){
-        console.log('Repo successfully cloned.');
+        console.log('Repository successfully created.');
         resolve(true);
       }
       else{

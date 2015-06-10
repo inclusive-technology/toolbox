@@ -2,6 +2,8 @@ var inquirer = require('inquirer');
 var commander = require('commander');
 var git = require('git');
 var exec = require('child_process').exec;
+var path = require('path');
+var fs = require('fs');
 
 var repository = null;
 var tagList = [];
@@ -12,13 +14,14 @@ commander
   .command('deploy')
   .description('For deployment!')
   .action(function(options){
-    openRepo().then(function(repo){
-      return Promise.all([getTags(), getRemotes()])
-    }).then(function(){
-      console.log('all done');
-
-      console.log(remoteList);
-
+    openRepo()
+    .then(function(){
+      return getTags();
+    })
+    .then(function(){
+      return getRemotes();
+    })
+    .then(function(){
       var tagQuestion = {
         type: 'list',
         name: 'tag',
@@ -34,18 +37,15 @@ commander
       };
 
       inquirer.prompt([tagQuestion, remoteQuestion], function(answers){
-        console.log(answers);
+        // console.log(answers);
+        deploy(answers.tag, answers.remote);
       });
     })
   });
-commander.parse(process.argv);
-
 
 function openRepo(){
-  console.log('open repo');
   return new Promise(function(resolve, reject){
     new git.Repo(process.cwd(), {is_bare: false}, function(error, repo){
-      console.log(error);
       if(!error){
         repository = repo;
         resolve(repo);
@@ -77,7 +77,13 @@ function getTags(){
           tagList.push(tags[i].name)
         }
 
-        resolve(tagList);
+        if(tagList.length === 0){
+          console.log('You do not have any tags to deploy yet!');
+          reject(null);
+        }
+        else{
+          resolve(tagList);
+        }
       }
     });
   });
@@ -85,35 +91,87 @@ function getTags(){
 
 function getRemotes(){
   return new Promise(function(resolve, reject){
-    exec('git remote -v', function(error, stdout, stderr){
+    var filePath = path.join(process.cwd(), 'package.json');
+    var data = fs.readFileSync(filePath, 'utf8');
+    var appPkg = JSON.parse(data);
 
-      if(error){
-        reject(error);
-      }
-      else{
-        var lines = stdout.split('\n');
+    if(appPkg.deployment.staging.remote){
+      remoteList.push({
+        key: 'staging',
+        name: 'staging',
+        value: appPkg.deployment.staging.remote
+      });
+    }
+    if(appPkg.deployment.production.remote){
+      remoteList.push({
+        key: 'production',
+        name: 'production',
+        value: appPkg.deployment.production.remote
+      });
+    }
 
-        var map = {};
-        for(var i in lines){
-          var chunks = lines[i].split('\t');
-          if(chunks.length == 2){
-            var name = chunks[0];
-            var url = chunks[1].replace(/\s\(.*\)/, '');
+    resolve(remoteList)
 
-            // Do not include origin as a deploy target
-            if(!map[name] && name !== 'origin'){
-              map[name] = true;
-              remoteList.push({
-                key: name,
-                name: lines[i].replace(/\s\(.*\)/, ''),
-                value: url,
-              });
-            }
-          }
-        }
+    // exec('git remote -v', function(error, stdout, stderr){
 
-        resolve(remoteList)
-      }
-    })
+    //   if(error){
+    //     reject(error);
+    //   }
+    //   else{
+    //     var lines = stdout.split('\n');
+
+    //     var map = {};
+    //     for(var i in lines){
+    //       var chunks = lines[i].split('\t');
+    //       if(chunks.length == 2){
+    //         var name = chunks[0];
+    //         var url = chunks[1].replace(/\s\(.*\)/, '');
+
+    //         // Do not include origin as a deploy target
+    //         if(!map[name] && name !== 'origin'){
+    //           map[name] = true;
+    //           remoteList.push({
+    //             key: name,
+    //             name: lines[i].replace(/\s\(.*\)/, ''),
+    //             value: url,
+    //           });
+    //         }
+    //       }
+    //     }
+
+    //     resolve(remoteList)
+    //   }
+    // })
+  });
+}
+
+function deploy(tag, remote){
+  // var branchName = 'deploy-' + Math.ceil(Math.random()*9999);
+  // var command = 'git checkout -b ' + branchName + ' ' + tag + ' && ' +
+  //   'git add -f public && ' +
+  //   'git commit -m Deploy && ' +
+  //   'git push -f ' + remote + ' ' + branchName + ':master && ' +
+  //   'git checkout -f '
+  // console.log(command);
+  // exec('git init ' + directoryPath + ' && git archive --remote="git@bitbucket.org:inclusive-activities/boilerplate.git" master | tar -x -C ' + directoryPath);
+
+  var script = path.join(__dirname, 'scripts', 'deploy.sh');
+  console.log(script);
+  var operation = exec(script + ' ' + tag + ' ' + remote);
+
+  operation.stdout.on('data', function(data){
+    console.log(data.toString());
+  });
+  operation.stderr.on('data', function(data){
+    console.log(data.toString());
+  });
+  operation.on('exit', function(code){
+    if(code === 0){
+      console.log('Deploy successfully.');
+    }
+    else{
+      console.log('An error has happened');
+      console.log('Process existed: ' + code);
+    }
   });
 }
