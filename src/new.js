@@ -1,191 +1,140 @@
 var inquirer = require('inquirer');
 var commander = require('commander');
-var git = require('git');
+var ssh = require('./ssh');
+var pkg = require('../package.json');
+var spawn = require('child_process').spawn;
 var exec = require('child_process').exec;
 var path = require('path');
-var sequest = require('sequest');
-var Client = require('ssh2').Client;
+var fs = require('fs');
 
-var map = {};
-var shArguments = [];
+// Deployment map
+var map = pkg.deployment;
 
 // deploy command
 commander
   .command('new <appName>')
   .description('Create a html boilerplate')
   .action(function(appName){
+    // Validate directory
+    var d = map['staging'].directory;
+    if(d.charAt(d.length-1) !== '/'){
+      map['staging'].directory = d + '/';
+    }
+    d = map['production'].directory;
+     if(d.charAt(d.length-1) !== '/'){
+      map['production'].directory = d + '/';
+    }
 
-    map = {};
-    shArguments = [];
 
-    var conn = new Client();
-    conn.on('ready', function() {
-      console.log('Client :: ready');
-      conn.exec('git', function(err, stream) {
-          if (err) throw err;
-          stream.on('close', function(code, signal) {
-            console.log('Stream :: close :: code: ' + code + ', signal: ' + signal);
-            conn.end();
-          }).on('data', function(data) {
-            console.log('STDOUT: ' + data);
-          }).stderr.on('data', function(data) {
-            console.log('STDERR: ' + data);
-          });
-        });
-    }).connect({
-      host: '10.0.0.85',
-      port: 22,
-      username: '',
-      password: ''
+    staging()
+    .then(function(data){
+      // console.log(map['staging'].host, data.username, data.password, map['staging'].port)
+      return ssh.connect(map['staging'].host, data.username, data.password, map['staging'].port)
+    })
+    .then(function(){
+      return ssh.new(appName, map['staging'].directory)
+    })
+    .then(function(){
+      return production();
+    })
+    .then(function(data){
+      var host = map['production'].host;
+      var port = map['production'].port || 22;
+      var directory = map['production'].directory;
+
+      return ssh.connect(map['production'].host, data.username, data.password, map['production'].port)
+    })
+    .then(function(){
+      return ssh.new(appName, map['production'].directory)
+    })
+    .then(function(){
+      return cloneRepo(appName);
+    })
+    .then(function(success){
+      if(success){
+        customize(appName);
+      }
     });
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    // dev().then(production).then(function(){
-    //   runShellScript(appName)
-    // });
-
-
-
-
-
-
-
-    // console.log('Creating new app...')
-
-    // // console.log(name);
-
-    // var command = 'sh ' + path.join(__dirname, 'new.sh') + ' ' +
-    //   name + ' ' +
-    //   2 + ' ' +
-    //   'param1' + ' ' +
-    //   'param2' + ' ';
-
-    // exec(command, function(error, stdout, stderr){
-    //   if(error){
-    //     console.log(error);
-    //   }
-    //   else{
-    //     console.log(stdout)
-    //   }
-    // });
   });
 commander.parse(process.argv);
 
-function runShellScript(appName){
-  // var numOfTargets = Math.ceil(shArguments.length/2);
-
-  // var command = 'sh ' + path.join(__dirname, 'new.sh') + ' ' +
-  //   appName + ' ' +
-  //   numOfTargets + ' ' +
-  //   shArguments.join(' ');
-
-  // console.log(command);
-
-  // exec(command, function(error, stdout, stderr){
-  //   if(error){
-  //     console.log(error);
-  //   }
-  //   else{
-  //     console.log(stdout)
-  //   }
-  // });
-
-  sequest(map['dev-deploy'].url, 'ls', function(error, stdout){
-    if(error){
-      throw error;
-    }
-    console.log(stdout);
-  })
-}
-
-function dev(){
-  return selectDeployment('dev-deploy').then(function(isSelected){
-    if(isSelected){
-      return setDetail('dev-deploy');
-    }
-    return false;
-  })
+function staging(){
+  console.log('Staging SSH:')
+  return setQuestionDetail('staging');
 }
 
 function production(){
-  return selectDeployment('production-deploy').then(function(isSelected){
-    if(isSelected){
-      return setDetail('production-deploy');
-    }
-    return false;
-  })
+  console.log('Production SSH:')
+  return setQuestionDetail('production');
 }
 
-function selectDeployment(targetName){
-  return new Promise(function(resolve, reject){
-    var questions = [
-      {
-        type: 'confirm',
-        name: 'isSelected',
-        message: 'Do you want to deploy to "'+targetName+'"',
-        default: true,
-      }
-    ];
-
-    inquirer.prompt(questions, function(answer){
-      console.log(answer);
-      resolve(answer['isSelected']);
-    });
-  });
-}
-
-function setDetail(targetName){
+function setQuestionDetail(env){
   return new Promise(function(resolve, reject){
 
-    var urlQuestion = {
+    var usernameQuestion = {
       type: 'input',
-      name: 'url',
-      message: 'Specify the SSH for remote ' + targetName + ': '
+      name: 'username',
+      default: 'zhengyi@inclusive',
+      message: 'username: '
     };
 
     var passwordQuestion = {
       type: 'password',
       name: 'password',
-      message: 'What is the password for remote ' + targetName + ': '
+      message: 'password: '
     }
 
-    inquirer.prompt([urlQuestion, passwordQuestion], function(answers){
-      map[targetName] = {
-        // name: targetName,
-        url: answers['url'],
-        password: answers['password']
-      };
-
-      shArguments.push(answers['url']);
-      shArguments.push(answers['password']);
+    inquirer.prompt([usernameQuestion, passwordQuestion], function(answers){
+      map[env].username = answers['username'];
 
       resolve(answers);
     });
   });
+}
+
+function cloneRepo(appName){
+  console.log('Setup local repository, please wait...');
+  return new Promise(function(resolve, reject){
+    // var operation = exec('git', ['clone', '--progress', 'git@bitbucket.org:inclusive-activities/boilerplate.git', appName]);
+    var operation = exec('git clone git@bitbucket.org:inclusive-activities/boilerplate.git ' + appName)
+    operation.stdout.on('data', function(data){
+      console.log(data.toString());
+    });
+    operation.stderr.on('data', function(data){
+      console.log(data.toString());
+    });
+    operation.on('exit', function(code){
+      if(code === 0){
+        console.log('Repo successfully cloned.');
+        resolve(true);
+      }
+      else{
+        console.log('An error has happened');
+        console.log('Process existed: ' + code);
+        resolve(false);
+      }
+    });
+  });
+}
+
+function customize(appName){
+  console.log('Updating package.json...')
+  // console.log(path.join(process.cwd(), appName));
+  var filePath = path.join(process.cwd(), appName, 'package.json');
+  var data = fs.readFileSync(filePath, 'utf8');
+
+  var appPkg = JSON.parse(data);
+  appPkg.name = appName;
+  appPkg.deployment = appPkg.deployment ? appPkg.deployment : {};
+  appPkg.deployment.staging = {
+    remote: 'ssh://' + map.staging.username + '@' + map.staging.host + map.staging.directory + appName + '.git'
+  };
+  appPkg.deployment.production = {
+    remote: 'ssh://' + map.production.username + '@' + map.production.host + map.production.directory + appName + '.git'
+  };
+
+  fs.writeFileSync(filePath, JSON.stringify(appPkg, null, 2));
+
+  console.log('Application successfully created.');
 }

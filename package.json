@@ -32,5 +32,16 @@
   "preferGlobal": true,
   "bin": {
     "toolbox": "index.js"
+  },
+  "deployment": {
+    "staging": {
+      "host": "10.0.0.85",
+      "port": 22,
+      "directory": "/d/sites/hkl-dev/activities/"
+    },
+    "production": {
+      "host": "10.0.0.85",
+      "directory": "/d/sites/hkl/activities/"
+    }
   }
 }
