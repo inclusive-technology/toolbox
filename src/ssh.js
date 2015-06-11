@@ -32,24 +32,53 @@ ssh.new = function(appName, directory){
   if(!appName || !directory){
     var error = 'Error: appName or directory missing';
     console.log(error)
-    ssh.close();
     throw error;
   }
 
   var repoPath = url.resolve(directory, appName+'.git');
-  return ssh.test(repoPath).then(function(canCreate){
-    if(canCreate){
-      return ssh.create(appName, repoPath).then(function(){
-        console.log('Application is now ready.');
-        console.log('\n----------------------------------------------------------\n');
-      });
-    }
-    else{
-      console.log('Application already exist and ready to deploy.');
+  // return ssh.test(repoPath).then(function(canCreate){
+  //   if(canCreate){
+  //     return ssh.create(appName, repoPath).then(function(){
+  //       console.log('Application is now ready.');
+  //       console.log('\n----------------------------------------------------------\n');
+  //     });
+  //   }
+  //   else{
+  //     console.log('Application already exist and ready to deploy.');
+  //     console.log('\n----------------------------------------------------------\n');
+  //     ssh.close();
+  //   }
+  // });
+
+  return ssh.test(repoPath)
+    .then(function(repoExist){
+      if(!repoExist){
+        return ssh.create(appName, repoPath);
+      }
+    })
+    .then(function(success){
+      // Repo successfully created, then set the hooks
+      if(success){
+        return ssh.setHooks(repoPath);
+      }
+      else{
+        console.log('Repository already exist and ready to deploy.');
+        // Repo exist, no need to setup hooks...
+        return true;
+      }
+    })
+    .then(function(success){
+      if(!success){
+        console.log('Hooks fail to setup... Please manually setup post-receive hooks.');
+      }
+      console.log('Application is now ready.');
       console.log('\n----------------------------------------------------------\n');
-      ssh.close();
-    }
-  });
+      return ssh.close();
+    })
+    .catch(function(error){
+      console.log(error);
+      return ssh.close();
+    })
 };
 
 /**
@@ -69,21 +98,16 @@ ssh.test = function(repoPath){
         stream
           .on('exit', function(exitCode){
             // console.log('exitCode', exitCode)
-            // Exit code 1 indicates an error has happened, which means the directory does not exist
-            // In this case, we want to create our repository!
-            if(exitCode === 1){
-              resolve(true)
-            }
-            else{
-              resolve(false)
-            }
+            // exit code 0 indicates that the directory already exists, therefore we do not need to
+            // create new application repo.
+            resolve(exitCode === 0);
           })
           .on('data', function(data) {
             // console.log(data.toString());
           })
           .stderr.on('data', function(data) {
             // console.log(data.toString());
-            reject(false);
+            reject(data.toString());
           });
       }
     })
@@ -92,7 +116,6 @@ ssh.test = function(repoPath){
 
 ssh.create = function(appName, repoPath){
   return new Promise(function(resolve, reject){
-    // TODO: this should be the repository
     // var command = 'git clone --bare git@bitbucket.org:inclusive-activities/boilerplate.git ' + repoPath;
     var command = 'git init --bare ' + repoPath;
     conn.exec(command, function(error, stream) {
@@ -100,31 +123,49 @@ ssh.create = function(appName, repoPath){
         throw error;
       }
       stream
-        .on('close', function(){
-          // console.log('closed!!!');
-        })
         .on('exit', function(exitCode){
-          // console.log('exit code', exitCode);
+          console.log('exit code', exitCode);
           resolve(exitCode === 0);
-        })
-        .on('end', function(code, signal){
-          // Close the connection, once finished the repo creation
-          // Note that if the repo already exist, the connection is closeed in ssh.new method.
-          ssh.close();
         })
         .on('data', function(data){
           console.log(data.toString());
         })
         .stderr.on('data', function(data) {
-          console.log(data.toString());
-          reject(false);
+          reject(data.toString());
         });
     })
   });
 };
 
+ssh.setHooks = function(repoPath){
+  console.log('Setup hooks...')
+  return new Promise(function(resolve, reject){
+    var hookPath = repoPath + '/hooks/';
+    console.log('hookPath: ', hookPath);
+    var command = 'git archive --remote="git@bitbucket.org:inclusive-activities/deployment-hooks.git" master | tar -x -C ' + hookPath;
+    conn.exec(command, function(error, stream){
+      if(error){
+        console.log(error);
+        throw error;
+      }
+      stream
+        .on('exit', function(exitCode){
+          // console.log('exit code', exitCode);
+          resolve(exitCode === 0);
+        })
+        .on('data', function(data){
+          console.log(data.toString());
+        })
+        .stderr.on('data', function(data) {
+          reject(data.toString());
+        });
+    })
+  });
+}
+
 ssh.close = function(){
   conn.end();
+  // console.log('**Connection closed**');
 };
 
 module.exports = ssh;

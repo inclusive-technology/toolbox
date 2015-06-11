@@ -91,7 +91,7 @@ function getTags(){
 
 function getRemotes(){
   return new Promise(function(resolve, reject){
-    var filePath = path.join(process.cwd(), 'package.json');
+    var filePath = path.resolve(process.cwd(), 'package.json');
     var data = fs.readFileSync(filePath, 'utf8');
     var appPkg = JSON.parse(data);
 
@@ -155,7 +155,7 @@ function deploy(tag, remote){
   // console.log(command);
   // exec('git init ' + directoryPath + ' && git archive --remote="git@bitbucket.org:inclusive-activities/boilerplate.git" master | tar -x -C ' + directoryPath);
 
-  var script = path.join(__dirname, 'scripts', 'deploy.sh');
+  var script = path.resolve(__dirname, 'scripts', 'deploy.sh');
   console.log(script);
   var operation = exec(script + ' ' + tag + ' ' + remote);
 

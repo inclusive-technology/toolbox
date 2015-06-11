@@ -19,7 +19,7 @@ reset_branch ()
   git checkout --quiet -f $ORIGINAL_HEAD_LOCATION
   git branch -D $TEMP_BRANCH
 }
-trap reset_branch EXIT
+trap reset_branch EXIT INT TERM
 
 error_exit ()
 {
@@ -35,6 +35,7 @@ git checkout -b $TEMP_BRANCH $TAG &&
 echo "" &&
 
 # Build the project
+npm install &&
 npm run build &&
 
 # Add public folder and commit

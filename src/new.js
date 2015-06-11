@@ -51,10 +51,11 @@ commander
       return setupLocalRepo(appName);
     })
     .then(function(success){
-      if(success){
-        customize(appName);
-      }
-    });
+      customize(appName);
+    })
+    .catch(function(error){
+      console.log(error.toString());
+    })
 
   });
 
@@ -104,32 +105,33 @@ function setupLocalRepo(appName){
     // var directoryPath = path.join(process.cwd(), appName);
     // var operation = exec('git clone --depth 1 git@bitbucket.org:inclusive-activities/boilerplate.git ' + appName + ' && cd ' + directoryPath + ' && git remote rm origin');
 
+    // TODO: check directory exist or not
     var directoryPath = path.join(process.cwd(), appName);
-    var operation = exec('git init ' + directoryPath + ' && git archive --remote="git@bitbucket.org:inclusive-activities/boilerplate.git" master | tar -x -C ' + directoryPath);
+    if(fs.existsSync(directoryPath)){
+      throw new Error(directoryPath + ' already exists!');
+    }
 
+    var operation = exec('git init ' + directoryPath + ' && git archive --remote="git@bitbucket.org:inclusive-activities/boilerplate.git" master | tar -x -C ' + directoryPath.replace(/\\/g, '/'));
     operation.stdout.on('data', function(data){
       console.log(data.toString());
     });
     operation.stderr.on('data', function(data){
-      console.log(data.toString());
+      throw new Error(data.toString());
     });
     operation.on('exit', function(code){
       if(code === 0){
-        console.log('Repository successfully created.');
-        resolve(true);
+        console.log('Local repository created.');
+        resolve();
       }
       else{
-        console.log('An error has happened');
-        console.log('Process existed: ' + code);
-        resolve(false);
+        throw new Error('An error has happened during local repository creation. Exit code: ' + code);
       }
     });
   });
 }
 
 function customize(appName){
-  console.log('Updating package.json...')
-  // console.log(path.join(process.cwd(), appName));
+  console.log('Updating package.json...');
   var filePath = path.join(process.cwd(), appName, 'package.json');
   var data = fs.readFileSync(filePath, 'utf8');
 
