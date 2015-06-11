@@ -12,12 +12,14 @@ TEMP_BRANCH="temp-deploy-$RANDOM"
 TAG=$1
 REMOTE=$2
 
+echo "tag: $TAG"
+echo "remote: $REMOTE"
+
 reset_branch ()
 {
-  echo "Reset to original head location..."
+  # echo "Reset to original head location..."
   # Check out original head location and delete the temp branch
-  git checkout --quiet -f $ORIGINAL_HEAD_LOCATION
-  git branch -D $TEMP_BRANCH
+  git checkout --quiet -f $ORIGINAL_HEAD_LOCATION && git branch -D $TEMP_BRANCH
 }
 trap reset_branch EXIT INT TERM
 

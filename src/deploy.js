@@ -2,6 +2,7 @@ var inquirer = require('inquirer');
 var commander = require('commander');
 var git = require('git');
 var exec = require('child_process').exec;
+var spawn = require('child_process').spawn;
 var path = require('path');
 var fs = require('fs');
 
@@ -155,16 +156,13 @@ function deploy(tag, remote){
   // console.log(command);
   // exec('git init ' + directoryPath + ' && git archive --remote="git@bitbucket.org:inclusive-activities/boilerplate.git" master | tar -x -C ' + directoryPath);
 
-  var script = path.resolve(__dirname, 'scripts', 'deploy.sh');
-  console.log(script);
-  var operation = exec(script + ' ' + tag + ' ' + remote);
+  var scriptPath = path.resolve(__dirname, 'scripts', 'deploy.sh');
+  // stdio: 'inherit' retains the format information of the output.
+  var operation = spawn('sh', [scriptPath, tag, remote], {stdio: 'inherit', stdout: 'inherit'});
 
-  operation.stdout.on('data', function(data){
-    console.log(data.toString());
-  });
-  operation.stderr.on('data', function(data){
-    console.log(data.toString());
-  });
+  operation.on('error', function(error){
+    console.log(error);
+  })
   operation.on('exit', function(code){
     if(code === 0){
       console.log('Deploy successfully.');
