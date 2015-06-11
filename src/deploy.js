@@ -9,12 +9,17 @@ var fs = require('fs');
 var repository = null;
 var tagList = [];
 var remoteList = [];
+var buildCommand;
+
 
 // deploy command
 commander
   .command('deploy')
   .description('For deployment!')
+  .option('-b --build_command <build_command>')
   .action(function(options){
+    buildCommand = options.build_command;
+
     openRepo()
     .then(function(){
       return getTags();
@@ -157,8 +162,13 @@ function deploy(tag, remote){
   // exec('git init ' + directoryPath + ' && git archive --remote="git@bitbucket.org:inclusive-activities/boilerplate.git" master | tar -x -C ' + directoryPath);
 
   var scriptPath = path.resolve(__dirname, 'scripts', 'deploy.sh');
+  // Add custom build command
+  var params = [scriptPath, tag, remote]
+  if(buildCommand){
+    params.push(buildCommand)
+  }
   // stdio: 'inherit' retains the format information of the output.
-  var operation = spawn('sh', [scriptPath, tag, remote], {stdio: 'inherit', stdout: 'inherit'});
+  var operation = spawn('sh', params, {stdio: 'inherit', stdout: 'inherit'});
 
   operation.on('error', function(error){
     console.log(error);

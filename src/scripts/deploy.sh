@@ -12,14 +12,11 @@ TEMP_BRANCH="temp-deploy-$RANDOM"
 TAG=$1
 REMOTE=$2
 
-echo "tag: $TAG"
-echo "remote: $REMOTE"
-
 reset_branch ()
 {
-  # echo "Reset to original head location..."
   # Check out original head location and delete the temp branch
-  git checkout --quiet -f $ORIGINAL_HEAD_LOCATION && git branch -D $TEMP_BRANCH
+  git checkout --quiet -f $ORIGINAL_HEAD_LOCATION
+  git branch -D $TEMP_BRANCH
 }
 trap reset_branch EXIT INT TERM
 
@@ -34,11 +31,23 @@ error_exit ()
 # Create and checkout a temp branch for the tag
 # && makes sure the following commands are only executed when the previous command executed successfully
 git checkout -b $TEMP_BRANCH $TAG &&
-echo "" &&
 
 # Build the project
-npm install &&
-npm run build &&
+# If custom build command is supplied run it instead
+if [ -z "$3" ]
+then
+  echo "Default build command..."
+  npm install && npm run build
+else
+  echo "Custom build command..."
+  $3
+fi
+
+# Make sure the previous command succeed, if not, exit with an error.
+if [ $? -ne 0 ]
+then
+  exit 1
+fi
 
 # Add public folder and commit
 git add -f public &&
