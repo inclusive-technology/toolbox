@@ -5,12 +5,13 @@ var exec = require('child_process').exec;
 var spawn = require('child_process').spawn;
 var path = require('path');
 var fs = require('fs');
+var io = require('socket.io-client');
 
 var repository = null;
 var tagList = [];
 var targetList = [];
 var buildCommand;
-
+var socket = null;
 
 // deploy command
 commander
@@ -19,6 +20,27 @@ commander
   .option('-b --build_command <build_command>')
   .action(function(options){
     buildCommand = options.build_command;
+
+    // Read the current application information
+    var filePath = path.resolve(process.cwd(), 'package.json');
+    var data = fs.readFileSync(filePath, 'utf8');
+    var appInfo = JSON.parse(data);
+
+    // listening on specific project build
+    socket = io.connect('http://217.155.67.46:3001');
+    socket.on('connect', function(data){
+      // console.log('\nSocket connected...\n');
+    });
+    socket.on('data', function(data){
+      // TODO: the data buffer might be contains ansi color info?
+      console.log(data.toString());
+      // process.stdout.write(data);
+    });
+    socket.on('disconnect', function(){
+      // console.log('closed')
+    });
+    socket.emit('listen', appInfo.name);
+
 
     openRepo()
     .then(function(){
