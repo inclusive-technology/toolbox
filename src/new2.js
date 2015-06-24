@@ -16,6 +16,8 @@ var apiRequest = require('request').defaults({
   json: true
 });
 
+var packageInfo = null;
+
 commander
   .command('new <slug> [owner]')
   .description('Create a html boilerplate. Owner defaults to "inclusive-activities"')
@@ -45,8 +47,12 @@ commander
           return setDeploymentKey(owner, slug);
         }).then(function(){
           return setRemotes(owner, slug);
+        }).then(function(){
+          return firstCommit(slug);
         });
       }
+    }).catch(function(error){
+      console.log(error);
     });
   });
 
@@ -124,14 +130,14 @@ function createLocalRepo(slug){
 function setPackageInfo(slug){
   console.log('Update application name...');
   var filePath = path.join(process.cwd(), slug, 'package.json');
-  var packageInfo = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+  packageInfo = JSON.parse(fs.readFileSync(filePath, 'utf8'));
   packageInfo.name = slug;
   fs.writeFileSync(filePath, JSON.stringify(packageInfo, null, 2));
   return packageInfo;
 }
 
 function setupHooks(owner, slug){
-  var packageInfo = setPackageInfo(slug);
+  setPackageInfo(slug);
 
   console.log('Setup deployment hooks...');
   var promises = [];
@@ -164,7 +170,7 @@ function setupHooks(owner, slug){
 
 function setDeploymentKey(owner, slug){
   console.log('Setup deployment key...');
-  var key = encodeURIComponent(fs.readFileSync(path.join(__dirname, 'deployment_rsa.pub'), 'utf8'));
+  var key = encodeURIComponent(fs.readFileSync(path.join(__dirname, 'keys', 'deploy_rsa.pub'), 'utf8'));
 
   return new Promise(function(resolve, reject){
     apiRequest.post({
@@ -191,7 +197,7 @@ function setRemotes(owner, slug){
     var operation = exec('cd ' + slug + ' && git remote add origin git@bitbucket.org:' + owner + '/' + slug + '.git');
     operation.on('exit', function(code){
       if(code === 0){
-        console.log('Application successfully created.');
+        resolve();
       }
       else{
         throw new Error('An error has happened during local repository setup. Exit code: ' + code);
@@ -200,3 +206,18 @@ function setRemotes(owner, slug){
   })
 }
 
+function firstCommit(slug){
+  return new Promise(function(resolve, reject){
+    console.log('First commit...');
+
+    var operation = exec('cd ' + slug + ' && git add -A && git commit -m "Initial commit" && git push --set-upstream origin master');
+    operation.on('exit', function(code){
+      if(code === 0){
+        console.log('Application successfully created.');
+      }
+      else{
+        throw new Error('An error has happened during local repository setup. Exit code: ' + code);
+      }
+    });
+  })
+}
