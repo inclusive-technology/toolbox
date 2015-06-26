@@ -1,6 +1,6 @@
 {
   "name": "inclusive-toolbox",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Toolbox for html activites deployment, etc.",
   "main": "index.js",
   "scripts": {
