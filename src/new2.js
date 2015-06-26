@@ -43,8 +43,8 @@ commander
       else{
         return createLocalRepo(slug).then(function(){
           return setupHooks(owner, slug);
-        }).then(function(){
-          return setDeploymentKey(owner, slug);
+        // }).then(function(){
+        //   return setDeploymentKey(owner, slug);
         }).then(function(){
           return setRemotes(owner, slug);
         }).then(function(){
