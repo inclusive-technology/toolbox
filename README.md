@@ -11,5 +11,5 @@ Run `toolbox new <appName>` to create a new application.
 # Deployment
 Under the root of the application. Run `toolbox deploy` to start the deployment process. It will prompt you with step by step instruction.
 
-Note that, tag is compulsory for deployment. `git tag <version>` if you have no tag yet.
+Note that, tag is compulsory for deployment. `git tag <version>` or `npm version [<newversion> | major | minor | patch | premajor | preminor | prepatch | prerelease]` if you have no tag yet.
 
