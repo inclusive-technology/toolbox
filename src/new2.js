@@ -16,8 +16,6 @@ var apiRequest = require('request').defaults({
   json: true
 });
 
-var packageInfo = null;
-
 commander
   .command('new <slug> [owner]')
   .description('Create a html boilerplate. Owner defaults to "inclusive-activities"')
@@ -36,25 +34,68 @@ commander
 
     // If remote repository exists, directly clone the repository. Otherwise,
     // go through step by step to create a brand new application.
-    createRemoteRepo(owner, slug).then(function(remoteRepoExist){
-      if(remoteRepoExist){
-        return cloneRemoteRepo(owner, slug);
+    // createRemoteRepo(owner, slug).then(function(remoteRepoExist){
+    //   if(remoteRepoExist){
+    //     return cloneRemoteRepo(owner, slug);
+    //   }
+    //   else{
+    //     return createLocalRepo(slug).then(function(){
+    //       return setupHooks(owner, slug);
+    //     // }).then(function(){
+    //     //   return setDeploymentKey(owner, slug);
+    //     }).then(function(){
+    //       return setRemotes(owner, slug);
+    //     }).then(function(){
+    //       return firstCommit(slug);
+    //     });
+    //   }
+    // }).catch(function(error){
+    //   console.log(error);
+    // });
+
+    checkRemoteRepo(owner, slug).then(function(){
+      return createLocalRepo(slug);
+    }).then(function(){
+      return createRemoteRepo(owner, slug);
+    }).then(function(){
+      return setRemotes(owner, slug);
+    }).then(function(){
+      return readPackageInfo(slug);
+    }).then(function(packageInfo){
+      return updatePackageInfo(slug, packageInfo)
+    }).then(function(packageInfo){
+      return setupHooks(owner, slug, packageInfo);
+    }).then(function(){
+      return firstCommit(slug);
+    }).catch(function(message){
+      console.log(message);
+    })
+  });
+
+function checkRemoteRepo(owner, slug){
+  return new Promise(function(resolve, reject){
+    apiRequest.get({
+      uri: '2.0/repositories/' + owner + '/' + slug,
+    }, function(error, response, body){
+      if(error){
+        console.log(error);
+        reject();
+      }
+      // Existing
+      else if(response.statusCode === 200){
+        reject("Remote application already exists. You have to manually clone it.");
+      }
+      // If no same named remote repository found,
+      // we are ready to create the project
+      else if(response.statusCode === 404){
+        resolve();
       }
       else{
-        return createLocalRepo(slug).then(function(){
-          return setupHooks(owner, slug);
-        // }).then(function(){
-        //   return setDeploymentKey(owner, slug);
-        }).then(function(){
-          return setRemotes(owner, slug);
-        }).then(function(){
-          return firstCommit(slug);
-        });
+        reject();
       }
-    }).catch(function(error){
-      console.log(error);
-    });
+    })
   });
+}
 
 function cloneRemoteRepo(owner, slug){
   console.log('Remote repository already exist, directly clone the repository. You might want to double check the name.')
@@ -74,13 +115,15 @@ function cloneRemoteRepo(owner, slug){
 }
 
 function createRemoteRepo(owner, slug){
+  console.log('Create remote repository...')
   return new Promise(function(resolve, reject){
     apiRequest.post({
       uri: '1.0/repositories',
       body: {
         name: slug,
         is_private: true,
-        scm: 'git'
+        scm: 'git',
+        description: ''
       }
     }, function(error, response, body){
       if(error){
@@ -127,18 +170,48 @@ function createLocalRepo(slug){
   });
 }
 
-function setPackageInfo(slug){
-  console.log('Update application name...');
-  var filePath = path.join(process.cwd(), slug, 'package.json');
-  packageInfo = JSON.parse(fs.readFileSync(filePath, 'utf8'));
-  packageInfo.name = slug;
-  fs.writeFileSync(filePath, JSON.stringify(packageInfo, null, 2));
-  return packageInfo;
+// function setPackageInfo(slug){
+//   console.log('Update application name...');
+//   var filePath = path.join(process.cwd(), slug, 'package.json');
+//   packageInfo = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+//   packageInfo.name = slug;
+//   fs.writeFileSync(filePath, JSON.stringify(packageInfo, null, 2));
+//   return packageInfo;
+// }
+
+// TODO: Use asynchronous reading...
+function readPackageInfo(slug){
+  return new Promise(function(resolve, reject){
+    var filePath = path.join(process.cwd(), slug, 'package.json');
+    fs.readFile(filePath, 'utf8', function(error, data){
+      if(error){
+        reject(error);
+      }
+      else{
+        resolve(JSON.parse(data));
+      }
+    });
+  });
 }
 
-function setupHooks(owner, slug){
-  setPackageInfo(slug);
+function updatePackageInfo(slug, packageInfo){
+  return new Promise(function(resolve, reject){
+    var filePath = path.join(process.cwd(), slug, 'package.json');
+    packageInfo.name = slug;
+    packageInfo.version = '0.1.0';
 
+    fs.writeFile(filePath, JSON.stringify(packageInfo, null, 2), function(error){
+      if(error){
+        reject(error);
+      }
+      else{
+        resolve(packageInfo);
+      }
+    })
+  });
+}
+
+function setupHooks(owner, slug, packageInfo){
   console.log('Setup deployment hooks...');
   var promises = [];
   for(var i=0; packageInfo.deployments && i<packageInfo.deployments.length; ++i){
@@ -168,27 +241,27 @@ function setupHooks(owner, slug){
 }
 
 
-function setDeploymentKey(owner, slug){
-  console.log('Setup deployment key...');
-  var key = encodeURIComponent(fs.readFileSync(path.join(__dirname, 'keys', 'deploy_rsa.pub'), 'utf8'));
+// function setDeploymentKey(owner, slug){
+//   console.log('Setup deployment key...');
+//   var key = encodeURIComponent(fs.readFileSync(path.join(__dirname, 'keys', 'deploy_rsa.pub'), 'utf8'));
 
-  return new Promise(function(resolve, reject){
-    apiRequest.post({
-      uri: '1.0/repositories/' + owner + '/' + slug + '/deploy-keys',
-      body: 'key=' + key + '&label=deployment',
-      // Since this REST api request does not use JSON body, have to turn the default json off
-      json: false
-    }, function(error, response, body){
-      if(error){
-        console.log(error);
-        reject();
-      }
-      else{
-        resolve();
-      }
-    });
-  });
-}
+//   return new Promise(function(resolve, reject){
+//     apiRequest.post({
+//       uri: '1.0/repositories/' + owner + '/' + slug + '/deploy-keys',
+//       body: 'key=' + key + '&label=deployment',
+//       // Since this REST api request does not use JSON body, have to turn the default json off
+//       json: false
+//     }, function(error, response, body){
+//       if(error){
+//         console.log(error);
+//         reject();
+//       }
+//       else{
+//         resolve();
+//       }
+//     });
+//   });
+// }
 
 function setRemotes(owner, slug){
   return new Promise(function(resolve, reject){
