@@ -96,6 +96,8 @@ function getTags(repo){
           tagList.push(tags[i].name);
         }
 
+        tagList.unshift('HEAD');
+
         if(tagList.length === 0){
           console.log('You do not have any tags to deploy yet!');
           reject();
@@ -162,12 +164,15 @@ function deploy(tag, target){
     // This peels annotated information(such as comments) of the tag, so
     // we can push it directly to the remote branch.
     // http://stackoverflow.com/a/4061542/111518
-    var convertAnnotatedTag = tag + '~0';
+    branchParam = tag + ':refs/heads/' + target;
+    if(tag.toLowerCase() !== 'head'){
+      branchParam = tag + '~0:refs/heads/'+target;
+    }
     var params = [
      'push',
      '-f',
      'origin',
-     convertAnnotatedTag+':refs/heads/'+target
+     branchParam
     ];
 
     // console.log('push to', tag);
