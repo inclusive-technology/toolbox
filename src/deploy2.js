@@ -159,11 +159,15 @@ function connectSocket(tag, target){
 
 function deploy(tag, target){
   return new Promise(function(resolve, reject){
+    // This peels annotated information(such as comments) of the tag, so
+    // we can push it directly to the remote branch.
+    // http://stackoverflow.com/a/4061542/111518
+    var convertAnnotatedTag = tag + '~0';
     var params = [
      'push',
      '-f',
      'origin',
-     tag+':refs/heads/'+target
+     convertAnnotatedTag+':refs/heads/'+target
     ];
 
     // console.log('push to', tag);
