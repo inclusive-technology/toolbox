@@ -8,6 +8,7 @@ var io = require('socket.io-client');
 
 require('./src/deploy2');
 require('./src/new2');
+require('./src/clean');
 
 // version
 commander.version(pkg.version);
