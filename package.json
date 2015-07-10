@@ -2,10 +2,10 @@
   "name": "inclusive-toolbox",
   "version": "0.2.1",
   "description": "Toolbox for html activites deployment, etc.",
-  "main": "index.js",
+  "main": "toolbox",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "index.js"
+    "start": "toolbox"
   },
   "repository": {
     "type": "git",
@@ -33,7 +33,7 @@
   },
   "preferGlobal": true,
   "bin": {
-    "toolbox": "index.js"
+    "toolbox": "bin/run.cmd"
   },
   "targets": [
     "gerty",

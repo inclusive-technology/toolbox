@@ -1,3 +1,5 @@
+#! /usr/bin/env node
+
 var commander = require('commander');
 var pkg = require('./package.json');
 var spawn = require('child_process').spawn;
