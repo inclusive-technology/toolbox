@@ -33,7 +33,7 @@
   },
   "preferGlobal": true,
   "bin": {
-    "toolbox": "bin/run.cmd"
+    "toolbox": "src/bin/run.cmd"
   },
   "targets": [
     "gerty",
