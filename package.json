@@ -35,7 +35,7 @@
   },
   "preferGlobal": true,
   "bin": {
-    "toolbox": "bin/toolbox"
+    "toolbox": "index.js"
   },
   "targets": [
     "gerty",
