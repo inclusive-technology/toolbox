@@ -151,7 +151,7 @@ function createLocalRepo(slug){
   console.log('Setup local repository, please wait...');
   return new Promise(function(resolve, reject){
     var directoryPath = path.join(process.cwd(), slug);
-    var operation = exec('git init ' + directoryPath + ' && git archive --remote="git@bitbucket.org:inclusive-activities/boilerplate.git" master | tar -x -C ' + directoryPath.replace(/\\/g, '/'));
+    var operation = exec('git init "' + directoryPath + '" && git archive --remote="git@bitbucket.org:inclusive-activities/boilerplate.git" master | tar -x -C "' + directoryPath.replace(/\\/g, '/') + '"');
     operation.stdout.on('data', function(data){
       console.log(data.toString());
     });
