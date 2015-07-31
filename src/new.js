@@ -1,117 +1,139 @@
 var inquirer = require('inquirer');
 var commander = require('commander');
-var ssh = require('./ssh');
-var pkg = require('../package.json');
-var spawn = require('child_process').spawn;
-var exec = require('child_process').exec;
 var path = require('path');
 var fs = require('fs');
+var exec = require('child_process').exec;
+var spawn = require('child_process').spawn;
 
-// Deployment map
-var map = pkg.deployment;
+// I'm slowly migrating boilerplate... so use webpack branch for now.
+var boilerplateBranch = 'webpack';
 
-// deploy command
+// Setup default api request.
+// OAuth consumer key and secret setup, etc.
+var apiRequest = require('request').defaults({
+  baseUrl: 'https://api.bitbucket.org',
+  oauth: {
+    consumer_key: process.env.BITBUCKET_KEY,
+    consumer_secret: process.env.BITBUCKET_SECRET
+  },
+  json: true
+});
+
 commander
-  .command('new <appName>')
-  .description('Create a html boilerplate')
-  .action(function(appName){
-    // Validate directory
-    var d = map['staging'].directory;
-    if(d.charAt(d.length-1) !== '/'){
-      map['staging'].directory = d + '/';
-    }
-    d = map['production'].directory;
-     if(d.charAt(d.length-1) !== '/'){
-      map['production'].directory = d + '/';
+  .command('new <slug> [owner]')
+  .description('Create a html boilerplate. Owner defaults to "inclusive-activities"')
+  .action(function(slug, owner){
+    owner = owner || 'inclusive-activities';
+
+    if(!slug){
+      throw new Error('Missing slug name!');
     }
 
+    // If local directory already exist, stop it.
+    var directoryPath = path.join(process.cwd(), slug);
+    if(fs.existsSync(directoryPath)){
+      throw new Error('Directory: "' + directoryPath + '" already exists!');
+    }
 
-    staging()
-    .then(function(data){
-      // console.log(map['staging'].host, data.username, data.password, map['staging'].port)
-      return ssh.connect(map['staging'].host, data.username, data.password, map['staging'].port)
+    checkRemoteRepo(owner, slug).then(function(){
+      return createLocalRepo(slug);
+    }).then(function(){
+      return createRemoteRepo(owner, slug);
+    }).then(function(){
+      return setRemotes(owner, slug);
+    }).then(function(){
+      return readPackageInfo(slug);
+    }).then(function(packageInfo){
+      return updatePackageInfo(slug, packageInfo)
+    }).then(function(packageInfo){
+      return setupHooks(owner, slug, packageInfo);
+    }).then(function(){
+      return firstCommit(slug);
+    }).catch(function(message){
+      console.log(message);
     })
-    .then(function(){
-      return ssh.new(appName, map['staging'].directory)
-    })
-    .then(function(){
-      return production();
-    })
-    .then(function(data){
-      var host = map['production'].host;
-      var port = map['production'].port || 22;
-      var directory = map['production'].directory;
-
-      return ssh.connect(map['production'].host, data.username, data.password, map['production'].port)
-    })
-    .then(function(){
-      return ssh.new(appName, map['production'].directory)
-    })
-    .then(function(){
-      return setupLocalRepo(appName);
-    })
-    .then(function(success){
-      customize(appName);
-    })
-    .catch(function(error){
-      console.log(error.toString());
-    })
-
   });
 
-function staging(){
-  console.log('Staging SSH:')
-  return setQuestionDetail('staging');
-}
-
-function production(){
-  console.log('Production SSH:')
-  return setQuestionDetail('production');
-}
-
-function setQuestionDetail(env){
+function checkRemoteRepo(owner, slug){
   return new Promise(function(resolve, reject){
+    apiRequest.get({
+      uri: '2.0/repositories/' + owner + '/' + slug,
+    }, function(error, response, body){
+      if(error){
+        console.log(error);
+        reject();
+      }
+      // Existing
+      else if(response.statusCode === 200){
+        reject("Remote application already exists. You have to manually clone it.");
+      }
+      // If no same named remote repository found,
+      // we are ready to create the project
+      else if(response.statusCode === 404){
+        resolve();
+      }
+      else{
+        reject();
+      }
+    })
+  });
+}
 
-    var usernameQuestion = {
-      type: 'input',
-      name: 'username',
-      default: 'zhengyi@inclusive',
-      message: 'username: '
-    };
-
-    var passwordQuestion = {
-      type: 'password',
-      name: 'password',
-      message: 'password: '
-    }
-
-    inquirer.prompt([usernameQuestion, passwordQuestion], function(answers){
-      map[env].username = answers['username'];
-
-      resolve(answers);
+function cloneRemoteRepo(owner, slug){
+  console.log('Remote repository already exist, directly clone the repository. You might want to double check the name.')
+  return new Promise(function(resolve, reject){
+    var params = ['clone', 'git@bitbucket.org:'+owner+'/'+slug+'.git'];
+    var operation = spawn('git', params, {stdio: 'inherit'});
+    operation.on('exit', function(code){
+      if(code === 0){
+        console.log('Local repository created.');
+        resolve();
+      }
+      else{
+        throw new Error('An error has happened during local repository creation. Exit code: ' + code);
+      }
     });
   });
 }
 
-function setupLocalRepo(appName){
+function createRemoteRepo(owner, slug){
+  console.log('Create remote repository...')
+  return new Promise(function(resolve, reject){
+    apiRequest.post({
+      uri: '1.0/repositories',
+      body: {
+        name: slug,
+        is_private: true,
+        scm: 'git',
+        description: ''
+      }
+    }, function(error, response, body){
+      if(error){
+        console.log(error);
+        reject();
+      }
+      // Successfully created remote repository. No remote repository exist.
+      // It will cause extracting a brand new repository locally
+      else if(response.statusCode === 200){
+        resolve(false)
+      }
+      // Same named repository exists under the owner.
+      // It will cause cloning the existing remote repository to local directory.
+      else if(response.statusCode === 400){
+        resolve(true);
+      }
+      else{
+        reject();
+      }
+    });
+  });
+}
+
+function createLocalRepo(slug){
   console.log('Setup local repository, please wait...');
   return new Promise(function(resolve, reject){
-    // var operation = exec('git', ['clone', '--progress', 'git@bitbucket.org:inclusive-activities/boilerplate.git', appName]);
-    // var operation = exec('git clone git@bitbucket.org:inclusive-activities/boilerplate.git ' + appName)
-
-    // var directoryPath = path.join(process.cwd(), appName);
-    // var operation = exec('mkdir ' + appName + ' && git archive --remote="git@bitbucket.org:inclusive-activities/boilerplate.git" master | tar -x -C ' + directoryPath)
-
-    // var directoryPath = path.join(process.cwd(), appName);
-    // var operation = exec('git clone --depth 1 git@bitbucket.org:inclusive-activities/boilerplate.git ' + appName + ' && cd ' + directoryPath + ' && git remote rm origin');
-
-    // TODO: check directory exist or not
-    var directoryPath = path.join(process.cwd(), appName);
-    if(fs.existsSync(directoryPath)){
-      throw new Error(directoryPath + ' already exists!');
-    }
-
-    var operation = exec('git init ' + directoryPath + ' && git archive --remote="git@bitbucket.org:inclusive-activities/boilerplate.git" master | tar -x -C ' + directoryPath.replace(/\\/g, '/'));
+    var directoryPath = path.join(process.cwd(), slug);
+    var operation = exec('git init "' + directoryPath + '" && git archive --remote="git@bitbucket.org:inclusive-activities/boilerplate.git" ' + boilerplateBranch + ' | tar -x -C "' + directoryPath.replace(/\\/g, '/') + '"');
     operation.stdout.on('data', function(data){
       console.log(data.toString());
     });
@@ -130,22 +152,95 @@ function setupLocalRepo(appName){
   });
 }
 
-function customize(appName){
-  console.log('Updating package.json...');
-  var filePath = path.join(process.cwd(), appName, 'package.json');
-  var data = fs.readFileSync(filePath, 'utf8');
+// TODO: Use asynchronous reading...
+function readPackageInfo(slug){
+  return new Promise(function(resolve, reject){
+    var filePath = path.join(process.cwd(), slug, 'package.json');
+    fs.readFile(filePath, 'utf8', function(error, data){
+      if(error){
+        reject(error);
+      }
+      else{
+        resolve(JSON.parse(data));
+      }
+    });
+  });
+}
 
-  var appPkg = JSON.parse(data);
-  appPkg.name = appName;
-  appPkg.deployment = appPkg.deployment ? appPkg.deployment : {};
-  appPkg.deployment.staging = {
-    remote: 'ssh://' + map.staging.username + '@' + map.staging.host + map.staging.directory + appName + '.git'
-  };
-  appPkg.deployment.production = {
-    remote: 'ssh://' + map.production.username + '@' + map.production.host + map.production.directory + appName + '.git'
-  };
+function updatePackageInfo(slug, packageInfo){
+  return new Promise(function(resolve, reject){
+    var filePath = path.join(process.cwd(), slug, 'package.json');
+    packageInfo.name = slug;
+    packageInfo.version = '0.1.0';
 
-  fs.writeFileSync(filePath, JSON.stringify(appPkg, null, 2));
+    fs.writeFile(filePath, JSON.stringify(packageInfo, null, 2), function(error){
+      if(error){
+        reject(error);
+      }
+      else{
+        resolve(packageInfo);
+      }
+    })
+  });
+}
 
-  console.log('Application successfully created.');
+function setupHooks(owner, slug, packageInfo){
+  console.log('Setup deployment hooks...');
+  var promises = [];
+  for(var i=0; packageInfo.deployments && i<packageInfo.deployments.length; ++i){
+    var hook = packageInfo.deployments[i];
+    var promise = new Promise(function(resolve, reject){
+      hook.description = hook.name;
+      hook.events = ['repo:push'];
+      hook.active = true;
+
+      apiRequest.post({
+        uri: '2.0/repositories/' + owner + '/' + slug + '/hooks',
+        body: hook
+      }, function(error, response, body){
+        if(error){
+          console.log(error);
+          reject();
+        }
+        else{
+          resolve();
+        }
+      })
+    });
+    promises.push(promise);
+  }
+
+  return Promise.all(promises);
+}
+
+function setRemotes(owner, slug){
+  return new Promise(function(resolve, reject){
+    console.log('Add remotes...');
+
+    var operation = exec('cd ' + slug + ' && git remote add origin git@bitbucket.org:' + owner + '/' + slug + '.git');
+    operation.on('exit', function(code){
+      if(code === 0){
+        resolve();
+      }
+      else{
+        throw new Error('An error has happened during local repository setup. Exit code: ' + code);
+      }
+    });
+  })
+}
+
+function firstCommit(slug){
+  return new Promise(function(resolve, reject){
+    console.log('First commit...');
+
+    var operation = exec('cd ' + slug + ' && git add -A && git commit -m "Initial commit" && git push --set-upstream origin master');
+    operation.on('exit', function(code){
+      if(code === 0){
+        console.log('Application successfully created.');
+      }
+      else{
+        throw new Error('An error has happened during local repository setup. Exit code: ' + code);
+      }
+    });
+  })
 }

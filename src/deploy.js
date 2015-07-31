@@ -5,12 +5,14 @@ var exec = require('child_process').exec;
 var spawn = require('child_process').spawn;
 var path = require('path');
 var fs = require('fs');
+var io = require('socket.io-client');
+var url = require('url');
+var colors = require('colors');
 
-var repository = null;
 var tagList = [];
-var remoteList = [];
-var buildCommand;
-
+var targetList = [];
+var appInfo = null;
+var socket;
 
 // deploy command
 commander
@@ -18,14 +20,14 @@ commander
   .description('For deployment!')
   .option('-b --build_command <build_command>')
   .action(function(options){
-    buildCommand = options.build_command;
+    readPackageInfo();
 
     openRepo()
-    .then(function(){
-      return getTags();
+    .then(function(repo){
+      return getTags(repo);
     })
     .then(function(){
-      return getRemotes();
+      return getTargets();
     })
     .then(function(){
       var tagQuestion = {
@@ -35,37 +37,48 @@ commander
         choices: tagList
       };
 
-      var remoteQuestion = {
+      var targetQuestion = {
         type: 'list',
-        name: 'remote',
+        name: 'target',
         message: 'Where to deploy to',
-        choices: remoteList,
+        choices: targetList,
       };
 
-      inquirer.prompt([tagQuestion, remoteQuestion], function(answers){
-        // console.log(answers);
-        deploy(answers.tag, answers.remote);
+      inquirer.prompt([tagQuestion, targetQuestion], function(answers){
+        // Connect to the correct server to get build messages output
+        connectSocket(answers.tag, answers.target).then(function(){
+          return deploy(answers.tag, answers.target);
+        }).catch(function(error){
+          console.log(error);
+        });
       });
     })
   });
+
+function readPackageInfo(){
+  // Read the current application information
+  var filePath = path.resolve(process.cwd(), 'package.json');
+  var data = fs.readFileSync(filePath, 'utf8');
+  appInfo = JSON.parse(data);
+  return appInfo;
+}
 
 function openRepo(){
   return new Promise(function(resolve, reject){
     new git.Repo(process.cwd(), {is_bare: false}, function(error, repo){
       if(!error){
-        repository = repo;
         resolve(repo);
       }
       else{
-        reject(error)
+        reject(error);
       }
     })
   });
 }
 
-function getTags(){
+function getTags(repo){
   return new Promise(function(resolve, reject){
-    repository.tags(function(error, tags){
+    repo.tags(function(error, tags){
       if(error){
         reject(error);
       }
@@ -78,108 +91,126 @@ function getTags(){
           return dateA < dateB ? 1 : -1;
         });
 
-
         for(var i in tags){
-          tagList.push(tags[i].name)
+          tagList.push(tags[i].name);
         }
+
+        tagList.unshift('HEAD');
 
         if(tagList.length === 0){
           console.log('You do not have any tags to deploy yet!');
-          reject(null);
+          reject();
         }
         else{
-          resolve(tagList);
+          resolve();
         }
       }
     });
   });
 }
 
-function getRemotes(){
+function getTargets(){
   return new Promise(function(resolve, reject){
-    var filePath = path.resolve(process.cwd(), 'package.json');
-    var data = fs.readFileSync(filePath, 'utf8');
-    var appPkg = JSON.parse(data);
+    targetList = appInfo.deployments.map(function(value){
+      return value.name;
+    });
 
-    if(appPkg.deployment.staging.remote){
-      remoteList.push({
-        key: 'staging',
-        name: 'staging',
-        value: appPkg.deployment.staging.remote
-      });
-    }
-    if(appPkg.deployment.production.remote){
-      remoteList.push({
-        key: 'production',
-        name: 'production',
-        value: appPkg.deployment.production.remote
-      });
-    }
-
-    resolve(remoteList)
-
-    // exec('git remote -v', function(error, stdout, stderr){
-
-    //   if(error){
-    //     reject(error);
-    //   }
-    //   else{
-    //     var lines = stdout.split('\n');
-
-    //     var map = {};
-    //     for(var i in lines){
-    //       var chunks = lines[i].split('\t');
-    //       if(chunks.length == 2){
-    //         var name = chunks[0];
-    //         var url = chunks[1].replace(/\s\(.*\)/, '');
-
-    //         // Do not include origin as a deploy target
-    //         if(!map[name] && name !== 'origin'){
-    //           map[name] = true;
-    //           remoteList.push({
-    //             key: name,
-    //             name: lines[i].replace(/\s\(.*\)/, ''),
-    //             value: url,
-    //           });
-    //         }
-    //       }
-    //     }
-
-    //     resolve(remoteList)
-    //   }
-    // })
+    resolve();
   });
 }
 
-function deploy(tag, remote){
-  // var branchName = 'deploy-' + Math.ceil(Math.random()*9999);
-  // var command = 'git checkout -b ' + branchName + ' ' + tag + ' && ' +
-  //   'git add -f public && ' +
-  //   'git commit -m Deploy && ' +
-  //   'git push -f ' + remote + ' ' + branchName + ':master && ' +
-  //   'git checkout -f '
-  // console.log(command);
-  // exec('git init ' + directoryPath + ' && git archive --remote="git@bitbucket.org:inclusive-activities/boilerplate.git" master | tar -x -C ' + directoryPath);
+function connectSocket(tag, target){
+  return new Promise(function(resolve, reject){
 
-  var scriptPath = path.resolve(__dirname, 'scripts', 'deploy.sh');
-  // Add custom build command
-  var params = [scriptPath, tag, remote]
-  if(buildCommand){
-    params.push(buildCommand)
-  }
-  // stdio: 'inherit' retains the format information of the output.
-  var operation = spawn('sh', params, {stdio: 'inherit', stdout: 'inherit'});
+    var deployInfo = appInfo.deployments.filter(function(value){
+      return target === value.name;
+    })[0];
 
-  operation.on('error', function(error){
-    console.log(error);
+    var urlData = url.parse(deployInfo.url);
+
+    // listening on specific project build
+    socket = io.connect(urlData.protocol + '//' + urlData.host);
+
+    // // Manually check timeout, otherwise it will stuck there forever.
+    // var timeoutID = setTimeout(function(){
+    //   socket.disconnect();
+    //   reject('Socket server timeout. Closing socket...');
+    // }, 5000);
+
+    socket.on('connect', function(data){
+      console.log('\nSocket connected...\n');
+      // clearTimeout(timeoutID);
+      resolve();
+    });
+    socket.on('data', function(data){
+      // TODO: the data buffer might be contains ansi color info?
+      console.log(data.toString());
+    });
+    socket.on('timeout', function(data){
+      reject();
+    });
+    socket.on('disconnect', function(){
+      // Once the socket is closed, we can safely delete the temp branch for deployment
+      deleteBranch(tag, target)
+    });
+    // Listening on specific build message
+    socket.emit('listen', appInfo.name);
   })
+}
+
+function deploy(tag, target){
+  return new Promise(function(resolve, reject){
+    // This peels annotated information(such as comments) of the tag, so
+    // we can push it directly to the remote branch.
+    // http://stackoverflow.com/a/4061542/111518
+    branchParam = tag + ':refs/heads/' + target;
+    if(tag.toLowerCase() !== 'head'){
+      branchParam = tag + '~0:refs/heads/'+target;
+    }
+    var params = [
+     'push',
+     '-f',
+     'origin',
+     branchParam
+    ];
+
+    // console.log('push to', tag);
+    // stdio: 'inherit' retains the format information of the output.
+    // var operation = spawn('git', params, {stdio: 'inherit', stdout: 'inherit'});
+    var operation = spawn('git', params);
+    operation.stdout.on('data', function(data){
+      console.log(data.toString());
+    });
+    operation.stderr.on('data', function(data){
+      console.log(data.toString());
+      // TODO: exit the terminal!
+    });
+    operation.on('exit', function(code){
+      if(code === 0){
+        console.log('Branch successfully pushed.');
+      }
+      else{
+        console.log('Branch push failed.');
+      }
+      resolve();
+    });
+  })
+}
+
+// TODO: Do not rely on the branch deletion and find a better way to force push to deployment branch?
+function deleteBranch(tag, target){
+  var operation = exec('git push origin :' + target);
+  operation.stdout.on('data', function(data){
+    console.log(data.toString());
+  });
+  operation.stderr.on('data', function(data){
+    console.log(data.toString());
+    // TODO: exit the terminal!
+  });
   operation.on('exit', function(code){
-    if(code === 0){
-      console.log('Deploy successfully.');
+    if(code !== 0){
+      console.log('WARN Branch deletion failed.');
     }
-    else{
-      console.log('An error has happened');
-      console.log('Process existed: ' + code);
-    }
+    console.log(colors.green('Successfully deployed %s to %s'), tag, target);
   });
 }

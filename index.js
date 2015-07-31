@@ -8,8 +8,8 @@ var fs = require('fs');
 var io = require('socket.io-client');
 
 
-require('./src/deploy2');
-require('./src/new2');
+require('./src/deploy');
+require('./src/new');
 require('./src/clean');
 
 // version
