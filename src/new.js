@@ -6,7 +6,7 @@ var exec = require('child_process').exec;
 var spawn = require('child_process').spawn;
 
 // I'm slowly migrating boilerplate... so use webpack branch for now.
-var boilerplateBranch = 'webpack';
+var boilerplateBranch = 'master';
 
 // Setup default api request.
 // OAuth consumer key and secret setup, etc.
